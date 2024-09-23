@@ -70,14 +70,20 @@ def get_jwks():
 def jwks():
     return jsonify(get_jwks())
 
+# JWKS Endpoint at .well-known
+@app.route('/.well-known/jwks.json', methods=['GET'])
+def jwks_well_known():
+    return jsonify(get_jwks())
+
 # Auth Endpoint for JWT issuance
 @app.route('/auth', methods=['POST'])
 def auth():
-    username = request.json.get('username')
-    password = request.json.get('password')
+    data = request.get_json()  # Get the JSON payload
+    username = data.get('username')
+    password = data.get('password')
     expired = request.args.get('expired')
 
-    if not username:
+    if not username or not password:
         return jsonify({"error": "Invalid username or password"}), 401
 
     if expired:
@@ -96,11 +102,18 @@ def auth():
         "sub": username,
         "iat": datetime.now(timezone.utc),
         "exp": exp,
-        "kid": key['kid']
     }
 
+    headers = {
+        "kid": key['kid']
+    }
+    
     private_key = key['private_key']
-    jwt_token = jwt.encode(payload, private_key, algorithm='RS256')
+    jwt_token = jwt.encode(payload, private_key, algorithm='RS256', headers=headers)
+
+    # Log the issued JWT's kid
+    app.logger.debug(f"Issued JWT with kid: {headers['kid']}")
+    app.logger.debug(f"Current JWKS keys: {[key['kid'] for key in keys]}")
 
     return jsonify({"token": jwt_token})
 
